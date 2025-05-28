@@ -16,9 +16,14 @@
 
 (function(){
     let map;
-    let placeIds = [];
+    let places = {
+        origin: null,
+        destination: null,
+        intermediates: []
+    };
     let paths = [];
     let markers = [];
+    let stopInputs = [];
 
     async function initMap() {
         const { Map } = await google.maps.importLibrary('maps');
@@ -32,149 +37,212 @@
 
     async function initPlace() {
         const { Autocomplete } = await google.maps.importLibrary('places');
-        let autocomplete = [];
-        let locationFields = Array.from(document.getElementsByClassName('input-location'));
-
-        let OptinallocationFields = Array.from(document.getElementsByClassName('optinal-input-location'));
-
-
-        //Enable autocomplete for input fields
-        locationFields.forEach((elem,i) => {
-            autocomplete[i] = new Autocomplete(elem);
-            google.maps.event.addListener(autocomplete[i],"place_changed", () => {
-                let place = autocomplete[i].getPlace(); 
-                if(Object.keys(place).length > 0){
-                    if (place.place_id){
-                        placeIds[i] = place.place_id; //We use Place Id in this example                
-                    } else {
-                        placeIds.splice(i,1); //If no place is selected or no place is found, remove the previous value from the placeIds.
-                        window.alert(`No details available for input: ${place.name}`);
-                        return;
-                    }
-                }
-            }); 
-        });  
+        const locationFields = Array.from(document.getElementsByClassName('input-location'));
         
+        // Initialize autocomplete for origin and destination
+        locationFields.forEach((elem, i) => {
+            const autocomplete = new Autocomplete(elem);
+            google.maps.event.addListener(autocomplete, "place_changed", () => {
+                const place = autocomplete.getPlace();
+                if (place.place_id) {
+                    if (i === 0) places.origin = place.place_id;
+                    if (i === 1) places.destination = place.place_id;
+                } else {
+                    window.alert(`No details available for input: ${place.name}`);
+                }
+            });
+        });
 
+        // Setup add stop button
+        document.getElementById('btn-addstop').addEventListener('click', addStopInput);
     }
 
-    function requestRoute(){
-        let btn = document.getElementById('btn-getroute');
+    function addStopInput() {
+        const container = document.getElementById('stops-container') || createStopsContainer();
+        const index = places.intermediates.length;
+        
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'Optionalinputgroup';
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'optinal-input-location';
+        input.placeholder = 'Vnesite naslov postaje';
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '-';
+        removeBtn.addEventListener('click', () => {
+            container.removeChild(groupDiv);
+            places.intermediates.splice(index, 1);
+            stopInputs.splice(index, 1);
+        });
 
-        btn.addEventListener('click', () => {
-            //In this example, we will extract the Place IDs from the Autocomplete response
-            //and use the Place ID for origin and destination
-            if(placeIds.length == 2){
-                let reqBody = {
-                    "origin": {
-                        "placeId": placeIds[0]
-                    },
-                    "destination": {
-                        "placeId": placeIds[1]
-                    }
-                }
-    
-                fetch("/request-route", {
-                    method: 'POST',
-                    body: JSON.stringify(reqBody),
-                    headers: {
-                        "Content-Type": "application/json"
-                    }
-                }).then((response) => {
-                    return response.json();
-                }).then((data) => {
-                    console.log(data);
-                    renderRoutes(data);
-                }).catch((error) => {
-                    console.log(error);
-                });
-            } else {
-                window.alert('Location must be set');
+        groupDiv.appendChild(input);
+        groupDiv.appendChild(removeBtn);
+        container.appendChild(groupDiv);
+        
+        // Initialize autocomplete for new stop
+        const autocomplete = new google.maps.places.Autocomplete(input);
+        google.maps.event.addListener(autocomplete, "place_changed", () => {
+            const place = autocomplete.getPlace();
+            if (place.place_id) {
+                places.intermediates[index] = place.place_id;
+            }
+        });
+        
+        stopInputs.push(input);
+    }
+
+    function createStopsContainer() {
+        const container = document.createElement('div');
+        container.id = 'stops-container';
+        const stopGroup = document.querySelector('.Optionalinputgroup');
+        stopGroup.parentNode.insertBefore(container, stopGroup.nextSibling);
+        return container;
+    }
+
+    function requestRoute() {
+        document.getElementById('btn-getroute').addEventListener('click', () => {
+            if (!places.origin || !places.destination) {
+                window.alert('Izberite izhodišče in destinacijo');
                 return;
             }
+
+            const reqBody = {
+                origin: { placeId: places.origin },
+                destination: { placeId: places.destination }
+            };
+
+            // Add intermediates if they exist
+            if (places.intermediates.length > 0) {
+                reqBody.intermediates = places.intermediates
+                    .filter(id => id)
+                    .map(id => ({ placeId: id }));
+            }
+
+            fetch("/request-route", {
+                method: 'POST',
+                body: JSON.stringify(reqBody),
+                headers: { "Content-Type": "application/json" }
+            }).then((response) => {
+                return response.json();
+            }).then((data) => {
+                console.log(data);
+                renderRoutes(data);
+            }).catch((error) => {
+                console.log(error);
+            });
         });
     }
 
     async function renderRoutes(data) {
-        clearUIElem(paths,'polyline');
+        clearUIElem(paths, 'polyline');
+        clearUIElem(markers, 'advMarker');
         const { encoding } = await google.maps.importLibrary("geometry");
-        let routes = data.routes;
+        
+        if (!data.routes || data.routes.length === 0) {
+            console.log("No route found");
+            return;
+        }
 
-        // Izpis cene poti
-        razdalja = data.routes[0].distanceMeters/1000;
-        let cena = document.getElementById("cena_km").value;
-        console.log("Razdalja poti: ", razdalja, " Cena: ", cena, "Cena poti: ", (razdalja * cena).toFixed(2));
-        let cenaPoti = (razdalja * cena).toFixed(2);
-        let displayCena = document.getElementById("priceDisplay").innerHTML = `Cena celotne poti: ${cenaPoti} EUR`;
+        const route = data.routes[0];
+        const pricePerKm = parseFloat(document.getElementById("cena_km").value) || 0;
+        let totalDistance = 0;
+        let totalPrice = 0;
+        let priceHtml = '<div class="price-breakdown">';
 
-        let decodedPaths = [];
-
-        ///Display routes and markers
-        routes.forEach((route,i) => {
-            if(route.hasOwnProperty('polyline')){
-                //Decode the encoded polyline
-                decodedPaths.push(encoding.decodePath(route.polyline.encodedPolyline));
-
-                //Draw polyline on the map
-                for(let i = decodedPaths.length - 1; i >= 0; i--){
-                    let polyline = new google.maps.Polyline({
-                        map: map,
-                        path: decodedPaths[i],
-                        strokeColor: "#4285f4",
-                        strokeOpacity: 1,
-                        strokeWeight: 5
-                    });
-                    paths.push(polyline);
-                }
-                
-                //Add markers for origin and destination
-                addMarker(route.legs[0].startLocation.latLng,"A");
-                addMarker(route.legs[0].endLocation.latLng,"B");
-
-                setViewport(route.viewport);
-            } else {
-                console.log("Route cannot be found");
-            }
+        // Cena za vsak del poti
+        route.legs.forEach((leg, i) => {
+            const legDistanceKm = leg.distanceMeters / 1000;
+            const legPrice = legDistanceKm * pricePerKm;
+            totalDistance += legDistanceKm;
+            totalPrice += legPrice;
+            
+            const startLabel = i === 0 ? 'A' : String.fromCharCode(65 + i);
+            const endLabel = String.fromCharCode(66 + i);
+            
+            priceHtml += `
+                <div class="leg-price">
+                    <span class="leg-label">${startLabel} → ${endLabel}:</span>
+                    <span class="leg-distance">${legDistanceKm.toFixed(1)} km</span>
+                    <span class="leg-cost">${legPrice.toFixed(2)} EUR</span>
+                </div>
+            `;
         });
+
+        // Celotna cena
+        priceHtml += `
+            <div class="total-price">
+                <span class="total-label">SKUPAJ:</span>
+                <span class="total-distance">${totalDistance.toFixed(1)} km</span>
+                <span class="total-cost">${totalPrice.toFixed(2)} EUR</span>
+            </div>
+        </div>`;
+        
+        // Posodobi prikaz cene
+        document.getElementById("priceDisplay").innerHTML = priceHtml;
+
+        // Nariši poti
+        const decodedPath = encoding.decodePath(route.polyline.encodedPolyline);
+        const polyline = new google.maps.Polyline({
+            map: map,
+            path: decodedPath,
+            strokeColor: "#4285f4",
+            strokeOpacity: 1,
+            strokeWeight: 5
+        });
+        paths.push(polyline);
+
+        // Add markers
+        addMarker(route.legs[0].startLocation.latLng, "A");
+        
+        route.legs.forEach((leg, i) => {
+            addMarker(leg.endLocation.latLng, String.fromCharCode(66 + i)); // B, C, D...
+        });
+
+        setViewport(route.viewport);
     }
 
-    async function addMarker(pos,label){
-        clearUIElem(markers,'advMarker');
+    async function addMarker(pos, label) {
         const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
         const { PinElement } = await google.maps.importLibrary("marker");
         const { LatLng } = await google.maps.importLibrary("core");
+        
         let pinGlyph = new PinElement({
             glyphColor: "#fff",
             glyph: label
         });
+        
         let marker = new AdvancedMarkerElement({
-            position: new LatLng({lat:pos.latitude,lng:pos.longitude}),
+            position: new LatLng({lat: pos.latitude, lng: pos.longitude}),
             gmpDraggable: false,
             content: pinGlyph.element,
             map: map
         });
+        
         markers.push(marker);
     }
 
     async function setViewport(viewPort) {
         const { LatLng } = await google.maps.importLibrary("core");
         const { LatLngBounds } = await google.maps.importLibrary("core");        
-        let sw = new LatLng({lat:viewPort.low.latitude,lng:viewPort.low.longitude});
-        let ne = new LatLng({lat:viewPort.high.latitude,lng:viewPort.high.longitude});        
-        map.fitBounds(new LatLngBounds(sw,ne));
+        let sw = new LatLng({lat: viewPort.low.latitude, lng: viewPort.low.longitude});
+        let ne = new LatLng({lat: viewPort.high.latitude, lng: viewPort.high.longitude});        
+        map.fitBounds(new LatLngBounds(sw, ne));
     }
 
-    function clearUIElem(obj,type) {
-        if(obj.length > 0){
-            if(type == 'advMarker'){
-                obj.forEach(function(item){
+    function clearUIElem(obj, type) {
+        if(obj.length > 0) {
+            if(type === 'advMarker') {
+                obj.forEach(function(item) {
                     item.map = null;
                 });
             } else {
-                obj.forEach(function(item){
+                obj.forEach(function(item) {
                     item.setMap(null);
                 });
             }
+            obj.length = 0;
         }
     }
 

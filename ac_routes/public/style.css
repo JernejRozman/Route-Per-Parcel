@@ -22,3 +22,33 @@
 .aside button {padding:20px 30px; font-size:16px; border:none; border-radius:50px; background-color:#1a73e8; color:#fff;}
 
 #btn-addstop {padding:10px 20px; font-size:16px; border:none; border-radius:50px; background-color:#1a73e8; color:#fff;}
+
+
+/* Add this to existing CSS */
+#stops-container {
+    margin-bottom: 20px;
+}
+
+.Optionalinputgroup {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.Optionalinputgroup input {
+    flex: 1;
+    margin-right: 10px;
+}
+
+.btn-removestop {
+    padding: 10px 15px;
+    background-color: #dc3545;
+}
+body {
+    background-image: url("background.png");
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center center;
+    min-height: 100vh;
+    min-width: 100vw;
+}
