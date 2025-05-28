@@ -1,9 +1,9 @@
 
-**Routes-per-partes** WebApp made with Google Routes API that lets you select a route like in Google Map and Waypoints along the way.  
+**Routes-per-partes** is a WebApp made with Google Routes API that lets you select a route like in Google Map and Waypoints along the way.  
 You enter a price and it automatically calculates the price of a leg of the route and the whole route.
 
 <p align="center">
-  <img src="webapp.png" width="600" lenght="600"/>
+  <img src="webapp.png" width="700" lenght="700"/>
 </p>
 
 
