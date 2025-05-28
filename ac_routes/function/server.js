@@ -15,7 +15,7 @@ function main() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": "AIzaSyAhdLxHNUHsRQUGFa_UkPFT4qo6O-Ub0ek",
+        "X-Goog-Api-Key": "#######################################",
         "X-Goog-FieldMask": "*"
       },
       body: JSON.stringify(req.body)
