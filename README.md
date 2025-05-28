@@ -3,7 +3,7 @@
 You enter a price and it automatically calculates the price of a leg of the route and the whole route.
 
 <p align="center">
-  <img src="webapp.png" width="700" lenght="700"/>
+  <img src="webapp.png" width="800" lenght="800"/>
 </p>
 
 
