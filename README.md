@@ -20,8 +20,11 @@ https://nodejs.org/en
 ```bash
 npm init
 ```
-
-4. **Running the server locally**
+4. **Acquisition of an API key and put it into fucntion/server.js:**
+```bash
+https://cloud.google.com/docs/authentication/api-keys
+```
+5. **Running the server locally**
 ```bash
 node function/server.js
 ```
