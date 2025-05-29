@@ -20,7 +20,7 @@ https://nodejs.org/en
 ```bash
 npm init
 ```
-4. **Acquisition of an API key and put it into fucntion/server.js in public/index.html:**
+4. **Acquisition of an API key and put it into fucntion/server.js and public/index.html:**
 ```bash
 https://cloud.google.com/docs/authentication/api-keys
 ```
