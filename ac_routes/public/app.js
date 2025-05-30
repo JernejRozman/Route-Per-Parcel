@@ -145,63 +145,72 @@
             return;
         }
 
-        const route = data.routes[0];
-        const pricePerKm = parseFloat(document.getElementById("cena_km").value) || 0;
-        let totalDistance = 0;
-        let totalPrice = 0;
-        let priceHtml = '<div class="price-breakdown">';
+    const route = data.routes[0];
+    const pricePerKm = parseFloat(document.getElementById("cena_km").value) || 0;
+    let totalDistance = 0;
+    let totalPrice = 0;
+    let priceHtml = '<div class="price-breakdown">';
 
-        // Cena za vsak del poti
-        route.legs.forEach((leg, i) => {
-            const legDistanceKm = leg.distanceMeters / 1000;
-            const legPrice = legDistanceKm * pricePerKm;
-            totalDistance += legDistanceKm;
-            totalPrice += legPrice;
-            
-            const startLabel = i === 0 ? 'A' : String.fromCharCode(65 + i);
-            const endLabel = String.fromCharCode(66 + i);
-            
-            priceHtml += `
-                <div class="leg-price">
-                    <span class="leg-label">${startLabel} → ${endLabel}:</span>
-                    <span class="leg-distance">${legDistanceKm.toFixed(1)} km</span>
-                    <span class="leg-cost">${legPrice.toFixed(2)} EUR</span>
-                </div>
-            `;
-        });
+    // Create array of all points in optimized order
+    const allPoints = [
+        { location: route.legs[0].startLocation, type: 'origin' },
+        ...route.legs.flatMap((leg, i) => [
+            { location: leg.endLocation, type: i === route.legs.length - 1 ? 'destination' : 'waypoint' }
+        ])
+    ];
 
-        // Celotna cena
+
+    // Calculate and display prices for each leg
+    route.legs.forEach((leg, i) => {
+        const legDistanceKm = leg.distanceMeters / 1000;
+        const legPrice = legDistanceKm * pricePerKm;
+        totalDistance += legDistanceKm;
+        totalPrice += legPrice;
+        
+        // Sequential labels for legs (A→B, B→C, etc.)
+        const startLabel = String.fromCharCode(65 + i);
+        const endLabel = String.fromCharCode(66 + i);
+        
         priceHtml += `
-            <div class="total-price">
-                <span class="total-label">SKUPAJ:</span>
-                <span class="total-distance">${totalDistance.toFixed(1)} km</span>
-                <span class="total-cost">${totalPrice.toFixed(2)} EUR</span>
+            <div class="leg-price">
+                <span class="leg-label">${startLabel} → ${endLabel}:</span>
+                <span class="leg-distance">${legDistanceKm.toFixed(1)} km</span>
+                <span class="leg-cost">${legPrice.toFixed(2)} EUR</span>
             </div>
-        </div>`;
-        
-        // Posodobi prikaz cene
-        document.getElementById("priceDisplay").innerHTML = priceHtml;
+        `;
+    });
 
-        // Nariši poti
-        const decodedPath = encoding.decodePath(route.polyline.encodedPolyline);
-        const polyline = new google.maps.Polyline({
-            map: map,
-            path: decodedPath,
-            strokeColor: "#4285f4",
-            strokeOpacity: 1,
-            strokeWeight: 5
-        });
-        paths.push(polyline);
+    // Add total price
+    priceHtml += `
+        <div class="total-price">
+            <span class="total-label">SKUPAJ:</span>
+            <span class="total-distance">${totalDistance.toFixed(1)} km</span>
+            <span class="total-cost">${totalPrice.toFixed(2)} EUR</span>
+        </div>
+    </div>`;
+    
+    // Update price display
+    document.getElementById("priceDisplay").innerHTML = priceHtml;
 
-        // Add markers
-        addMarker(route.legs[0].startLocation.latLng, "A");
-        
-        route.legs.forEach((leg, i) => {
-            addMarker(leg.endLocation.latLng, String.fromCharCode(66 + i)); // B, C, D...
-        });
+    // Draw route
+    const decodedPath = encoding.decodePath(route.polyline.encodedPolyline);
+    const polyline = new google.maps.Polyline({
+        map: map,
+        path: decodedPath,
+        strokeColor: "#4285f4",
+        strokeOpacity: 1,
+        strokeWeight: 5
+    });
+    paths.push(polyline);
 
-        setViewport(route.viewport);
-    }
+    // Add markers with sequential labels
+    allPoints.forEach((point, i) => {
+        const label = String.fromCharCode(65 + i);
+        addMarker(point.location.latLng, label);
+    });
+
+    setViewport(route.viewport);
+}
 
     async function addMarker(pos, label) {
         const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
