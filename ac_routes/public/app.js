@@ -101,7 +101,7 @@
         return container;
     }
 
-    function requestRoute() {
+     function requestRoute() {
         document.getElementById('btn-getroute').addEventListener('click', () => {
             if (!places.origin || !places.destination) {
                 window.alert('Izberite izhodišče in destinacijo');
@@ -110,7 +110,8 @@
 
             const reqBody = {
                 origin: { placeId: places.origin },
-                destination: { placeId: places.destination }
+                destination: { placeId: places.destination },
+                intermediates: []
             };
 
             // Add intermediates if they exist
@@ -127,10 +128,10 @@
             }).then((response) => {
                 return response.json();
             }).then((data) => {
-                console.log(data);
+                console.log("API Response:", data);
                 renderRoutes(data);
             }).catch((error) => {
-                console.log(error);
+                console.error("Fetch Error:", error);
             });
         });
     }
@@ -145,72 +146,95 @@
             return;
         }
 
-    const route = data.routes[0];
-    const pricePerKm = parseFloat(document.getElementById("cena_km").value) || 0;
-    let totalDistance = 0;
-    let totalPrice = 0;
-    let priceHtml = '<div class="price-breakdown">';
+        const route = data.routes[0];
+        const pricePerKm = parseFloat(document.getElementById("cena_km").value) || 0;
+        let totalDistance = 0;
+        let totalPrice = 0;
+        let priceHtml = '<div class="price-breakdown">';
 
-    // Create array of all points in optimized order
-    const allPoints = [
-        { location: route.legs[0].startLocation, type: 'origin' },
-        ...route.legs.flatMap((leg, i) => [
-            { location: leg.endLocation, type: i === route.legs.length - 1 ? 'destination' : 'waypoint' }
-        ])
-    ];
-
-
-    // Calculate and display prices for each leg
-    route.legs.forEach((leg, i) => {
-        const legDistanceKm = leg.distanceMeters / 1000;
-        const legPrice = legDistanceKm * pricePerKm;
-        totalDistance += legDistanceKm;
-        totalPrice += legPrice;
+        // VERIFIED WAYPOINT OPTIMIZATION HANDLING
+        const optimizedOrder = route.optimizedIntermediateWaypointIndex || [];
+        console.log("Optimized waypoint order:", optimizedOrder);
         
-        // Sequential labels for legs (A→B, B→C, etc.)
-        const startLabel = String.fromCharCode(65 + i);
-        const endLabel = String.fromCharCode(66 + i);
+        // Create array of all points in optimized order
+        const allPoints = [];
         
+        // 1. Origin is always first (A)
+        allPoints.push({
+            location: route.legs[0].startLocation,
+            label: 'A'
+        });
+        
+        // 2. Add optimized intermediates (B, C, D...)
+        optimizedOrder.forEach((originalIdx, i) => {
+            // +1 because legs[0] is origin to first waypoint
+            const legIndex = originalIdx + 1;
+            if (route.legs[legIndex]) {
+                allPoints.push({
+                    location: route.legs[legIndex].startLocation,
+                    label: String.fromCharCode(66 + i) // B, C, D...
+                });
+            }
+        });
+        
+        // 3. Destination is always last
+        const lastLeg = route.legs[route.legs.length - 1];
+        const lastLabel = String.fromCharCode(66 + optimizedOrder.length); // B + count
+        allPoints.push({
+            location: lastLeg.endLocation,
+            label: lastLabel
+        });
+
+        // Calculate and display prices for each leg
+        route.legs.forEach((leg, i) => {
+            const legDistanceKm = leg.distanceMeters / 1000;
+            const legPrice = legDistanceKm * pricePerKm;
+            totalDistance += legDistanceKm;
+            totalPrice += legPrice;
+            
+            // Labels from optimized sequence
+            const startLabel = allPoints[i].label;
+            const endLabel = allPoints[i + 1].label;
+            
+            priceHtml += `
+                <div class="leg-price">
+                    <span class="leg-label">${startLabel} → ${endLabel}:</span>
+                    <span class="leg-distance">${legDistanceKm.toFixed(1)} km</span>
+                    <span class="leg-cost">${legPrice.toFixed(2)} EUR</span>
+                </div>
+            `;
+        });
+
+        // Add total price
         priceHtml += `
-            <div class="leg-price">
-                <span class="leg-label">${startLabel} → ${endLabel}:</span>
-                <span class="leg-distance">${legDistanceKm.toFixed(1)} km</span>
-                <span class="leg-cost">${legPrice.toFixed(2)} EUR</span>
+            <div class="total-price">
+                <span class="total-label">SKUPAJ:</span>
+                <span class="total-distance">${totalDistance.toFixed(1)} km</span>
+                <span class="total-cost">${totalPrice.toFixed(2)} EUR</span>
             </div>
-        `;
-    });
+        </div>`;
+        
+        // Update price display
+        document.getElementById("priceDisplay").innerHTML = priceHtml;
 
-    // Add total price
-    priceHtml += `
-        <div class="total-price">
-            <span class="total-label">SKUPAJ:</span>
-            <span class="total-distance">${totalDistance.toFixed(1)} km</span>
-            <span class="total-cost">${totalPrice.toFixed(2)} EUR</span>
-        </div>
-    </div>`;
-    
-    // Update price display
-    document.getElementById("priceDisplay").innerHTML = priceHtml;
+        // Draw route
+        const decodedPath = encoding.decodePath(route.polyline.encodedPolyline);
+        const polyline = new google.maps.Polyline({
+            map: map,
+            path: decodedPath,
+            strokeColor: "#4285f4",
+            strokeOpacity: 1,
+            strokeWeight: 5
+        });
+        paths.push(polyline);
 
-    // Draw route
-    const decodedPath = encoding.decodePath(route.polyline.encodedPolyline);
-    const polyline = new google.maps.Polyline({
-        map: map,
-        path: decodedPath,
-        strokeColor: "#4285f4",
-        strokeOpacity: 1,
-        strokeWeight: 5
-    });
-    paths.push(polyline);
+        // Add markers with optimized labels
+        allPoints.forEach(point => {
+            addMarker(point.location.latLng, point.label);
+        });
 
-    // Add markers with sequential labels
-    allPoints.forEach((point, i) => {
-        const label = String.fromCharCode(65 + i);
-        addMarker(point.location.latLng, label);
-    });
-
-    setViewport(route.viewport);
-}
+        setViewport(route.viewport);
+    }
 
     async function addMarker(pos, label) {
         const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
